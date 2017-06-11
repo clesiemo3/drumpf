@@ -1,19 +1,27 @@
 package clesiemo3.drumpf
 
 import twitter4j._
-
 import java.io.File
-import com.typesafe.config.{ Config, ConfigFactory }
+
+import com.typesafe.config.{Config, ConfigFactory}
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-
+import com.github.tototoshi.csv._
 
 object Util {
-  var dotEnv = ConfigFactory.empty()
-  if (sys.env.get("CONSUMER_KEY")==None){
+  def writeCSV(l: List[List[Any]], fileName: String) : Unit = {
+    val f = new File(fileName)
+    val writer = CSVWriter.open(f)
+    writer.writeAll(l)
+    writer.close()
+  }
+
+  var dotEnv: Config = ConfigFactory.empty()
+  if (sys.env.get("CONSUMER_KEY").isEmpty){
     dotEnv = ConfigFactory.parseFile(new File(".env"))
   }
-  val config = new twitter4j.conf.ConfigurationBuilder()
+  val config: twitter4j.conf.Configuration = new twitter4j.conf.ConfigurationBuilder()
     .setDebugEnabled(true)
     .setOAuthConsumerKey(sys.env.getOrElse("CONSUMER_KEY",dotEnv.getString("CONSUMER_KEY")))
     .setOAuthConsumerSecret(sys.env.getOrElse("CONSUMER_SECRET",dotEnv.getString("CONSUMER_SECRET")))
@@ -22,11 +30,11 @@ object Util {
     .build
 }
 
-object FollowIdsStreamer {
-  def getFullTimeline(timelineUser: String) = {
+object Timeline {
+  def getFullTimeline(timelineUser: String) : List[List[Any]] = {
     val twitter = new TwitterFactory(Util.config).getInstance
     val pager = new Paging().count(200)
-    val timeline = new ListBuffer[Any]
+    val timeline = new ListBuffer[List[Any]]
     var loop = true
 
     while(loop){
@@ -35,20 +43,29 @@ object FollowIdsStreamer {
         loop = false
       } else {
         for (status <- statuses) {
-          //println("@" + status.getUser.getScreenName + " - " + status.getText + " - " + status.getCreatedAt)
-          //println("%s %s".format(status.getText, status.getCreatedAt))
-          timeline.append(List(status.getId, status.getText, status.getCreatedAt))
+         timeline.append(List(status.getId, status.getText, status.getCreatedAt))
         }
         //set pager with new maxId
-        pager.setMaxId(statuses.last.getId() - 1)
+        pager.setMaxId(statuses.last.getId - 1)
       }
     }
-    timeline
+    val timelineOut = timeline.toList
+    timelineOut
+  }
+
+  def saveTimeline(timelineUser: String, fileType: String) : Unit = {
+    val t = getFullTimeline(timelineUser)
+    fileType.toLowerCase() match {
+      case "csv" => Util.writeCSV(t, "timeline.csv")
+      //TODO: Database connectivity
+      case "db" => None
+    }
+
   }
 
   def main(args: Array[String]) {
-    try { // gets Twitter instance with default credentials
-      val x = getFullTimeline("realDonaldTrump")
+    try {
+      saveTimeline("realDonaldTrump","csv")
     } catch {
       case te: TwitterException =>
         te.printStackTrace()
